@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "test.h"
+#include "clibp.h"
 
 cLibp *__Main__;
 
@@ -15,10 +15,15 @@ cLibp *__Main__;
 //     }
 // }
 
+void pretty_p(const char *q, int err, int ff) {
+    printf("%s%s\x1b[0m\n", (err ? "\x1b[31m" : "\x1b[32m"), q);
+    if(ff) free((char *)q);
+}
+
 /*
     FUTURE IMPLEMENTATION:
 */
-cLibp *InitCLP(const char *cmd) {
+cLibp *InitCLP(const char *cmd, int debug) {
     cLibp *p = (cLibp *)malloc(sizeof(cLibp));
     if(!p) {
         printf("[ x ] Error, Unable to allocate memory for cLib+ .....!\n");
@@ -28,9 +33,10 @@ cLibp *InitCLP(const char *cmd) {
     *p = (cLibp){
         .Files          = NewArray(NULL),
         .SourceFiles    = NewArray(NULL),
-        .CompileCmd     = NewString(strdup("gcc ")),
+        .CompileCmd     = NewString(strdup("sudo gcc ")),
         .AutoFree       = 0,
-        .CAutoFree      = 0
+        .CAutoFree      = 0,
+        .Debug          = debug
     };
     __Main__ = p;
 
@@ -40,6 +46,9 @@ cLibp *InitCLP(const char *cmd) {
     }
 
     Parse_cLibp(p);
+    p->CompileCmd.AppendArray(&p->CompileCmd, (const char *[]){"test.c -lstr -larr -lmap -lOS\0", NULL});
+    pretty_p(CreateString((char *[]){"[ cLib+ COMPILATION CMD ]: ", p->CompileCmd.data, "\n[ cLib+ GCC Response ]: ....", NULL}), 0, 1);
+    char *t = ExecuteCmd(p->CompileCmd.data);
 
     return p;
 }
@@ -52,7 +61,7 @@ int CheckCmd(cLibp *c, const char *cmd) {
     int found = 0;
     for(int i = 0; i < g.idx; i++) {
         String n = NewString(g.arr[i]);
-        if(n.Is(&n, "./clp") || n.Is(&n, "/root/clp")) {
+        if(n.Is(&n, "clp") || n.Is(&n, "./clp") || n.Is(&n, "/root/clp")) {
             c->CmdArgs.Remove(&c->CmdArgs, i);
             found = 1;
         }
@@ -65,10 +74,9 @@ int CheckCmd(cLibp *c, const char *cmd) {
         if(n.EndsWith(&n, ".clp"))
             c->Files.Append(&c->Files, strdup(n.data));
         else
-            printf("Fail %s\n", n.data);
+            (c->Debug ? pretty_p(CreateString((char *[]){"[ cLib+ ARGV(s) ]: ", n.data, NULL}), 0, 1) : 0);
 
         // if(n.Is(&n, "--c-autofree")) {}
-        c->CompileCmd.AppendArray(&c->CompileCmd, (const char *[]){strdup(n.data), " ", NULL});
         n.Destruct(&n);
     }
 
@@ -99,7 +107,6 @@ int __Parse_File(cLibp *c, const char *file, int main) {
     if(!c || !file)
         return -1;
 
-    printf("%s\n", file);
     File Content = Openfile(file, FILE_READ);
     if(!Content.fd) {
         printf("[ - ] Error, Unable to open or read file: %s....!\n", file);
@@ -117,14 +124,13 @@ int __Parse_File(cLibp *c, const char *file, int main) {
 
     Array lines = NewArray((const void **)code.Split(&code, "\n"));
     int main_found = 0;
-    for(char i = 0, *token = lines.arr[i]; i < lines.idx; i++, token = lines.arr[i]) {
-        String line = NewString(token);
+    for(int i = 0; i < lines.idx; i++) {
+        String line = NewString(lines.arr[i]);
         if(line.StartsWith(&line, "int main")) {
             main_found = 1;
         }
 
         if(line.Contains(&line, "___Any___")) {
-            printf("___Any___ Found On %d\n", i);
             Array new_line = __Parse_Any(c, codefile, line);
             char *g = new_line.Join(&new_line, "\n");
             codefile->NewContent.Write(&codefile->NewContent, g);
@@ -133,20 +139,52 @@ int __Parse_File(cLibp *c, const char *file, int main) {
             if(new_line.idx > 0) {
                 new_line.Destruct(&new_line, 1, 1);
                 free(g);
-            }
+            } else { printf("[ - ] Error, Invalid syntax on line: %d", i); }
             continue;
         }
 
+        int ye = 0;
+        for(int v = 0; v < codefile->Vars.idx; v++) {
+            if(line.Contains(&line, ((___Variable___ *)codefile->Vars.arr[v])->Name) && line.Contains(&line, ".Destruct();")) {
+                
+                int b;
+                if((b = line.CountChar(&line, ' ')) > -1)
+                    for(int n = 0; n < b; n++)
+                        line.Trim(&line, ' ');
+                    
+                Array args = NewArray((const void **)line.Split(&line, "."));
+                char *g = CreateString((char *[]){"\t", ((___Variable___ *)codefile->Vars.arr[v])->TempName, ".Destruct(&", ((___Variable___ *)codefile->Vars.arr[v])->TempName, ");", NULL});
+    
+                if(g != NULL) {
+                    codefile->NewContent.Write(&codefile->NewContent, g);
+                    codefile->NewContent.Write(&codefile->NewContent, "\n");
+                    free(g);
+                    ye = 1;
+                    break;
+                } else { printf("[ - ] Error, Invalid syntax on line: %d", i); }
+            }
+        }
+        
+        if(ye)
+            continue;
+
         codefile->NewContent.Write(&codefile->NewContent, line.data);
         codefile->NewContent.Write(&codefile->NewContent, "\n");
+
+        line.Destruct(&line);
     }
 
-    char *test = codefile->NewContent.Read(&codefile->NewContent);
-    printf("%s\n", test);
+    
+    if(c->Debug) {
+        char *test = codefile->NewContent.Read(&codefile->NewContent);
+        pretty_p(CreateString((char *[]){"[ cLib+ - C Generated Code ]:\n", NULL}), 0, 1);
+        pretty_p(CreateString((char *[]){test, "\n", NULL}), 1, 1);
+    }
+
+    c->CompileCmd.AppendArray(&c->CompileCmd, (const char *[]){codefile->NewContent.path, " ", NULL});
     codefile->NewContent.Destruct(&codefile->NewContent);
     Content.Destruct(&Content);
     c->SourceFiles.Append(&c->SourceFiles, codefile);
-    printf("%ld\n", c->SourceFiles.idx);
     return 1;
 }
 
@@ -156,7 +194,7 @@ Array __Parse_Any(cLibp *c, CodeFile *codefile, String line) {
     Array new_code = NewArray(NULL);
 
     int b;
-    if((b = line.CountChar(&line, '\t')) > 0)
+    if((b = line.CountChar(&line, '\t')) > -1)
         for(int n = 0; n < b; n++)
             line.Trim(&line, '\t');
 
@@ -180,21 +218,7 @@ Array __Parse_Any(cLibp *c, CodeFile *codefile, String line) {
     possible1.Destruct(&possible1);
     possible2.Destruct(&possible2);
     v->Name = strdup(var_name);
-
-    /* Create a pointer as stack usage, create variable and set info, add to source code info */
-    if(line.Contains(&line, "___Any___")) { // Stack
-        v->Pointer = (void *)malloc(sizeof(void *));
-        memset(v->Pointer, '\0', sizeof(void *));
-        codefile->Vars.Append(&codefile->Vars, v);
-        char *num = iString(__Main__->SourceFiles.idx);
-        char *num2 = iString(codefile->Vars.idx - 1);
-
-        // ((___Variable___ *)((CodeFile *)Debug->SourceFiles.arr[i])->Vars.arr[i])
-        new_code.Append(&new_code, CreateString((char *[]){"\t___Variable___ __", var_name, "_var_info = { .Pointer = malloc(sizeof(void *)), .Size = sizeof(void *) };" , NULL}));
-        new_code.Append(&new_code, CreateString((char *[]){"\t___Any___ ", var_name, " = __", var_name, "_var_info.Pointer;", NULL}));
-        LineArgs.Destruct(&LineArgs, 1, 1);
-        return new_code;
-    }
+    v->TempName = CreateString((char *[]){"__", var_name, "_var_info", NULL});
 
     /* Create an empty pointer on heap, create variable and set info, add to source code info */
     if(line.Contains(&line, "___Any___()")) { // Pointer
@@ -203,7 +227,8 @@ Array __Parse_Any(cLibp *c, CodeFile *codefile, String line) {
         codefile->Vars.Append(&codefile->Vars, v);
         char *num = iString(__Main__->SourceFiles.idx);
         char *num2 = iString(codefile->Vars.idx - 1);
-        new_code.Append(&new_code, CreateString((char *[]){"\t___Variable___ __", var_name, "_var_info = { .Pointer = malloc(sizeof(void *)), .Size = sizeof(void *) };" , NULL}));
+        new_code.Append(&new_code, CreateString((char *[]){"\t___Variable___ __", var_name, "_var_info = { .Pointer = malloc(1024), .Size = 1024 };" , NULL}));
+        new_code.Append(&new_code, CreateString((char *[]){"\tmemset(__", var_name, "_var_info.Pointer, '\\0', 1024);" , NULL}));
         new_code.Append(&new_code, CreateString((char *[]){"\t___Any___ ", var_name, " = __", var_name, "_var_info.Pointer;", NULL}));
         LineArgs.Destruct(&LineArgs, 1, 1);
         return new_code;
@@ -212,7 +237,7 @@ Array __Parse_Any(cLibp *c, CodeFile *codefile, String line) {
     /* Parse ___Any___(...) for heap size, create variable and set info, add to source code info */
     if(line.Contains(&line, "___Any___(")) { // Pointer
         String any = NewString(strdup(LineArgs.arr[0]));
-        if(any.data[any.idx] != ')' && any.data[any.idx - 1] == ')') {
+        if(any.data[any.idx] != ')' && any.data[any.idx - 1] != ')') {
             printf("[ - ] Error, Invalid ___Any___ Allocation....!\n");
         }
 
@@ -231,13 +256,52 @@ Array __Parse_Any(cLibp *c, CodeFile *codefile, String line) {
         codefile->Vars.Append(&codefile->Vars, v);
         char *num = iString(__Main__->SourceFiles.idx);
         char *num2 = iString(codefile->Vars.idx - 1);
-        new_code.Append(&new_code, CreateString((char *[]){"\t___Variable___ *__", var_name, "_var_info = { .Pointer = malloc(", any.data, "), .Size = ", any.data, " };" , NULL}));
+        new_code.Append(&new_code, CreateString((char *[]){"\t___Variable___ __", var_name, "_var_info = { .Pointer = malloc(", any.data, "), .Size = ", any.data, " };" , NULL}));
+        new_code.Append(&new_code, CreateString((char *[]){"\tmemset(__", var_name, "_var_info.Pointer, '\\0', ", any.data, ");" , NULL}));
         new_code.Append(&new_code, CreateString((char *[]){"\t___Any___ ", var_name, " = __", var_name, "_var_info.Pointer;", NULL}));
         new_code.arr[new_code.idx] = NULL;
         LineArgs.Destruct(&LineArgs, 1, 1);
         return new_code;
     }
 
+    
+    /* Create a pointer as stack usage, create variable and set info, add to source code info */
+    if(line.Contains(&line, "___Any___")) { // Stack
+        v->Pointer = (void *)malloc(sizeof(void *));
+        memset(v->Pointer, '\0', sizeof(void *));
+        codefile->Vars.Append(&codefile->Vars, v);
+        char *num = iString(__Main__->SourceFiles.idx);
+        char *num2 = iString(codefile->Vars.idx - 1);
+
+        // ((___Variable___ *)((CodeFile *)Debug->SourceFiles.arr[i])->Vars.arr[i])
+        new_code.Append(&new_code, CreateString((char *[]){"\t___Variable___ __", var_name, "_var_info = { .Pointer = malloc(sizeof(void *)), .Size = sizeof(void *) };" , NULL}));
+        new_code.Append(&new_code, CreateString((char *[]){"\tmemset(__", var_name, "_var_info.Pointer, '\\0', sizeof(void *));" , NULL}));
+        new_code.Append(&new_code, CreateString((char *[]){"\t___Any___ ", var_name, " = __", var_name, "_var_info.Pointer;", NULL}));
+        LineArgs.Destruct(&LineArgs, 1, 1);
+        return new_code;
+    }
+
     LineArgs.Destruct(&LineArgs, 1, 1);
     return ((Array){0});
+}
+
+void    *Type;
+char    *Name;
+char    *TempName;
+size_t   Size;
+void    *Pointer;
+int     Initialized;
+void    (*Destruct) (struct ___Variable___ *v);
+void DestructVar(___Variable___ *v) {
+    if(v->Type)
+        free(v->Type);
+
+    if(v->Name)
+        free(v->Name);
+
+    if(v->TempName)
+        free(v->TempName);
+
+    if(v->Pointer)
+        free(v->Pointer);
 }

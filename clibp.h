@@ -5,6 +5,7 @@
 #include <arr.h>
 #include <map.h>
 #include <OS/file.h>
+#include <OS/utils.h>
 
 #include <___utils___.h>
 
@@ -17,9 +18,11 @@ typedef struct ___Struct___ {
 typedef struct ___Variable___ {
     void    *Type;
     char    *Name;
+    char    *TempName;
     size_t   Size;
     void    *Pointer;
     int     Initialized;
+    void    (*Destruct) (struct ___Variable___ *v);
 } ___Variable___;
 
 typedef Array VarList;
@@ -45,13 +48,14 @@ typedef struct cLibp {
     String          CompileCmd;
     int             AutoFree;
     int             CAutoFree;
+    int             Debug;
 } cLibp;
 
 #define CLIBP_BUILD_DIR "clibp_build"
 
 extern cLibp *__Main__;
 
-cLibp *InitCLP(const char *cmd);
+cLibp *InitCLP(const char *cmd, int debug);
 int CheckCmd(cLibp *c, const char *cmd);
 void Parse_cLibp(cLibp *c);
 int __Parse_File(cLibp *c, const char *file, int main);

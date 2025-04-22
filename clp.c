@@ -3,13 +3,24 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 
-#include "test.h"
+#include "clibp.h"
+
+int arr_contains(char **argv, char *q) {
+    if(!argv || !q)
+        return 0;
+
+    for(int i = 0; argv[i] != NULL; i++)
+        if(!strcmp(argv[i], q))
+            return 1;
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     Array a = NewArray((const void **)argv);
 
     char *str = a.Join(&a, " ");
-    InitCLP(str);
+    InitCLP(str, arr_contains(argv, "--debug"));
     // void *handle = dlopen("./libshared.so", RTLD_NOW);
     // if (!handle) {
     //     fprintf(stderr, "dlopen failed: %s\n", dlerror());
