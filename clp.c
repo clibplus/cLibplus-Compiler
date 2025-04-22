@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 
-#include "clibp.h"
+#include "src/clibp.h"
 
 int arr_contains(char **argv, char *q) {
     if(!argv || !q)

@@ -10,6 +10,7 @@
 #include <___utils___.h>
 
 typedef void *___Any___;
+typedef char *___str___;
 
 typedef struct ___Struct___ {
     char *NAME;
@@ -55,8 +56,15 @@ typedef struct cLibp {
 
 extern cLibp *__Main__;
 
-cLibp *InitCLP(const char *cmd, int debug);
-int CheckCmd(cLibp *c, const char *cmd);
-void Parse_cLibp(cLibp *c);
-int __Parse_File(cLibp *c, const char *file, int main);
-Array __Parse_Any(cLibp *c, CodeFile *codefile, String line);
+cLibp       *InitCLP(const char *cmd, int debug);
+int         CheckCmd(cLibp *c, const char *cmd);
+void        Parse_cLibp(cLibp *c);
+int         __Parse_File(cLibp *c, const char *file, int main);
+Array       __Parse_Any(cLibp *c, CodeFile *codefile, String line);
+Array       __Parse_String(cLibp *c, CodeFile *codefile, String line);
+
+void        DestructVar(___Variable___ *v);
+
+
+// String
+String 		ConstructMethods(String *s);
